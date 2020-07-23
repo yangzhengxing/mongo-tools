@@ -84,21 +84,21 @@ class ReplFixture(Fixture):
 
     def get_primary(self):
         """
-        Returns the primary of a replica set, or the master of a
-        master-slave deployment.
+        Returns the primary of a replica set, or the main of a
+        main-subordinate deployment.
         """
         raise NotImplementedError("get_primary must be implemented by ReplFixture subclasses")
 
     def get_secondaries(self):
         """
         Returns a list containing the secondaries of a replica set, or
-        the slave of a master-slave deployment.
+        the subordinate of a main-subordinate deployment.
         """
         raise NotImplementedError("get_secondaries must be implemented by ReplFixture subclasses")
 
     def await_repl(self):
         """
-        Blocks until all operations on the primary/master have
+        Blocks until all operations on the primary/main have
         replicated to all other nodes.
         """
         raise NotImplementedError("await_repl must be implemented by ReplFixture subclasses")
