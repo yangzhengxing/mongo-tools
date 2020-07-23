@@ -1,5 +1,5 @@
 """
-Master/slave fixture for executing JSTests against.
+Main/subordinate fixture for executing JSTests against.
 """
 
 from __future__ import absolute_import
@@ -15,9 +15,9 @@ from ... import logging
 from ... import utils
 
 
-class MasterSlaveFixture(interface.ReplFixture):
+class MainSubordinateFixture(interface.ReplFixture):
     """
-    Fixture which provides JSTests with a master/slave deployment to
+    Fixture which provides JSTests with a main/subordinate deployment to
     run against.
     """
 
@@ -26,8 +26,8 @@ class MasterSlaveFixture(interface.ReplFixture):
                  job_num,
                  mongod_executable=None,
                  mongod_options=None,
-                 master_options=None,
-                 slave_options=None,
+                 main_options=None,
+                 subordinate_options=None,
                  dbpath_prefix=None,
                  preserve_dbpath=False):
 
@@ -38,8 +38,8 @@ class MasterSlaveFixture(interface.ReplFixture):
 
         self.mongod_executable = mongod_executable
         self.mongod_options = utils.default_if_none(mongod_options, {})
-        self.master_options = utils.default_if_none(master_options, {})
-        self.slave_options = utils.default_if_none(slave_options, {})
+        self.main_options = utils.default_if_none(main_options, {})
+        self.subordinate_options = utils.default_if_none(subordinate_options, {})
         self.preserve_dbpath = preserve_dbpath
 
         # Command line options override the YAML configuration.
@@ -49,24 +49,24 @@ class MasterSlaveFixture(interface.ReplFixture):
                                            "job%d" % (self.job_num),
                                            config.FIXTURE_SUBDIR)
 
-        self.master = None
-        self.slave = None
+        self.main = None
+        self.subordinate = None
 
     def setup(self):
-        if self.master is None:
-            self.master = self._new_mongod_master()
-        self.master.setup()
-        self.port = self.master.port
+        if self.main is None:
+            self.main = self._new_mongod_main()
+        self.main.setup()
+        self.port = self.main.port
 
-        if self.slave is None:
-            self.slave = self._new_mongod_slave()
-        self.slave.setup()
+        if self.subordinate is None:
+            self.subordinate = self._new_mongod_subordinate()
+        self.subordinate.setup()
 
     def await_ready(self):
-        self.master.await_ready()
-        self.slave.await_ready()
+        self.main.await_ready()
+        self.subordinate.await_ready()
 
-        # Do a replicated write to ensure that the slave has finished with its initial sync before
+        # Do a replicated write to ensure that the subordinate has finished with its initial sync before
         # starting to run any tests.
         client = utils.new_mongo_client(self.port)
 
@@ -88,54 +88,54 @@ class MasterSlaveFixture(interface.ReplFixture):
         success = True  # Still a success if nothing is running.
 
         if not running_at_start:
-            self.logger.info("Master-slave deployment was expected to be running in teardown(),"
+            self.logger.info("Main-subordinate deployment was expected to be running in teardown(),"
                              " but wasn't.")
 
-        if self.slave is not None:
+        if self.subordinate is not None:
             if running_at_start:
-                self.logger.info("Stopping slave...")
+                self.logger.info("Stopping subordinate...")
 
-            success = self.slave.teardown()
-
-            if running_at_start:
-                self.logger.info("Successfully stopped slave.")
-
-        if self.master is not None:
-            if running_at_start:
-                self.logger.info("Stopping master...")
-
-            success = self.master.teardown() and success
+            success = self.subordinate.teardown()
 
             if running_at_start:
-                self.logger.info("Successfully stopped master.")
+                self.logger.info("Successfully stopped subordinate.")
+
+        if self.main is not None:
+            if running_at_start:
+                self.logger.info("Stopping main...")
+
+            success = self.main.teardown() and success
+
+            if running_at_start:
+                self.logger.info("Successfully stopped main.")
 
         return success
 
     def is_running(self):
-        return (self.master is not None and self.master.is_running() and
-                self.slave is not None and self.slave.is_running())
+        return (self.main is not None and self.main.is_running() and
+                self.subordinate is not None and self.subordinate.is_running())
 
     def get_primary(self):
-        return self.master
+        return self.main
 
     def get_secondaries(self):
-        return [self.slave]
+        return [self.subordinate]
 
     def await_repl(self):
         """
-        Inserts a document into each database on the master and waits
-        for all write operations to be acknowledged by the master-slave
+        Inserts a document into each database on the main and waits
+        for all write operations to be acknowledged by the main-subordinate
         deployment.
         """
 
         client = utils.new_mongo_client(self.port)
 
-        # We verify that each database has replicated to the slave because in the case of an initial
-        # sync, the slave may acknowledge writes to one database before it has finished syncing
+        # We verify that each database has replicated to the subordinate because in the case of an initial
+        # sync, the subordinate may acknowledge writes to one database before it has finished syncing
         # others.
         db_names = client.database_names()
         self.logger.info("Awaiting replication of inserts to each of the following databases on"
-                         " master on port %d: %s",
+                         " main on port %d: %s",
                          self.port,
                          db_names)
 
@@ -144,7 +144,7 @@ class MasterSlaveFixture(interface.ReplFixture):
                 continue  # The local database is expected to differ, ignore.
 
             self.logger.info("Awaiting replication of insert to database %s (w=2, wtimeout=%d min)"
-                             " to master on port %d",
+                             " to main on port %d",
                              db_name,
                              interface.ReplFixture.AWAIT_REPL_TIMEOUT_MINS,
                              self.port)
@@ -177,33 +177,33 @@ class MasterSlaveFixture(interface.ReplFixture):
                                         mongod_options=mongod_options,
                                         preserve_dbpath=self.preserve_dbpath)
 
-    def _new_mongod_master(self):
+    def _new_mongod_main(self):
         """
         Returns a standalone.MongoDFixture configured to be used as the
-        master of a master-slave deployment.
+        main of a main-subordinate deployment.
         """
 
-        logger_name = "%s:master" % (self.logger.name)
+        logger_name = "%s:main" % (self.logger.name)
         mongod_logger = logging.loggers.new_logger(logger_name, parent=self.logger)
 
         mongod_options = self.mongod_options.copy()
-        mongod_options.update(self.master_options)
-        mongod_options["master"] = ""
-        mongod_options["dbpath"] = os.path.join(self._dbpath_prefix, "master")
+        mongod_options.update(self.main_options)
+        mongod_options["main"] = ""
+        mongod_options["dbpath"] = os.path.join(self._dbpath_prefix, "main")
         return self._new_mongod(mongod_logger, mongod_options)
 
-    def _new_mongod_slave(self):
+    def _new_mongod_subordinate(self):
         """
         Returns a standalone.MongoDFixture configured to be used as the
-        slave of a master-slave deployment.
+        subordinate of a main-subordinate deployment.
         """
 
-        logger_name = "%s:slave" % (self.logger.name)
+        logger_name = "%s:subordinate" % (self.logger.name)
         mongod_logger = logging.loggers.new_logger(logger_name, parent=self.logger)
 
         mongod_options = self.mongod_options.copy()
-        mongod_options.update(self.slave_options)
-        mongod_options["slave"] = ""
+        mongod_options.update(self.subordinate_options)
+        mongod_options["subordinate"] = ""
         mongod_options["source"] = "localhost:%d" % (self.port)
-        mongod_options["dbpath"] = os.path.join(self._dbpath_prefix, "slave")
+        mongod_options["dbpath"] = os.path.join(self._dbpath_prefix, "subordinate")
         return self._new_mongod(mongod_logger, mongod_options)

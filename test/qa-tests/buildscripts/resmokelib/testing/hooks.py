@@ -151,7 +151,7 @@ class CheckReplDBHash(CustomBehavior):
     def after_test(self, test_report):
         """
         After each test, check that the dbhash of the test database is
-        the same on all nodes in the replica set or master/slave
+        the same on all nodes in the replica set or main/subordinate
         fixture.
         """
 
@@ -174,7 +174,7 @@ class CheckReplDBHash(CustomBehavior):
                 secondary_conn = utils.new_mongo_client(port=secondary.port,
                                                         read_preference=read_preference)
                 # Skip arbiters.
-                if secondary_conn.admin.command("isMaster").get("arbiterOnly", False):
+                if secondary_conn.admin.command("isMain").get("arbiterOnly", False):
                     continue
 
                 all_matched = CheckReplDBHash._check_all_db_hashes(primary_conn,
